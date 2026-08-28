@@ -24,14 +24,14 @@ jobs:
       - name: Extract verified Android project
         run: |
           mkdir -p build-man-water
-          unzip -t man-water-android/MAN-Water-Android-v1.0.8.zip
-          unzip -q man-water-android/MAN-Water-Android-v1.0.8.zip -d build-man-water
+          unzip -t man-water-android/MAN-Water-Android-v1.1.0.zip
+          unzip -q man-water-android/MAN-Water-Android-v1.1.0.zip -d build-man-water
       - name: Build debug APK
         working-directory: build-man-water/MAN-Water-Android-v1.0.0
         run: gradle assembleDebug --stacktrace --console=plain
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MAN-Water-APK-v1.0.8
+          name: MAN-Water-APK-v1.1.0
           path: build-man-water/MAN-Water-Android-v1.0.0/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
