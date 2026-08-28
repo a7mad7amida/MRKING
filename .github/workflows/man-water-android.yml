@@ -1,10 +1,12 @@
-name: Build MAN Water APK
+name: Build MAN Water APK Offline First
 
 on:
   workflow_dispatch:
   push:
+    branches:
+      - man-water-v1.4.0-offline
     paths:
-      - "man-water-android/**"
+      - "man-water-android/v1.4-overrides/**"
       - ".github/workflows/man-water-android.yml"
 
 jobs:
@@ -21,17 +23,18 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Extract verified Android project
+      - name: Prepare offline-first Android project
         run: |
           mkdir -p build-man-water
           unzip -t man-water-android/MAN-Water-Android-v1.3.0.zip
           unzip -q man-water-android/MAN-Water-Android-v1.3.0.zip -d build-man-water
+          cp -a man-water-android/v1.4-overrides/app/. build-man-water/MAN-Water-Android-v1.0.0/app/
       - name: Build debug APK
         working-directory: build-man-water/MAN-Water-Android-v1.0.0
         run: gradle assembleDebug --stacktrace --console=plain
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MAN-Water-APK-v1.3.0
+          name: MAN-Water-APK-v1.4.0-OFFLINE
           path: build-man-water/MAN-Water-Android-v1.0.0/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
