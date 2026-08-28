@@ -24,25 +24,10 @@ jobs:
       - name: Extract Android project
         run: |
           mkdir -p build-man-water
-          unzip -q man-water-android/MAN-Water-Android-v1.0.2.zip -d build-man-water
+          unzip -q man-water-android/MAN-Water-Android-v1.0.3.zip -d build-man-water
       - name: Build debug APK
         working-directory: build-man-water/MAN-Water-Android-v1.0.0
-        shell: bash
-        run: |
-          set +e
-          gradle assembleDebug --stacktrace --console=plain 2>&1 | tee build.log
-          code=${PIPESTATUS[0]}
-          if [ "$code" -ne 0 ]; then
-            message=$(grep -E "(^FAILURE:|^\* What went wrong:|^> | error: )" build.log | tail -n 12 | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g')
-            echo "::error title=Android build details::${message}"
-            exit "$code"
-          fi
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: MAN-Water-Build-Log
-          path: build-man-water/MAN-Water-Android-v1.0.0/build.log
+        run: gradle assembleDebug --stacktrace --console=plain
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
