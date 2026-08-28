@@ -88,7 +88,7 @@ public class MainActivity extends Activity {
     private String loginNow(String username, String password) {
         try {
             JSONObject body = new JSONObject().put("username", username.trim()).put("password", password);
-            HttpURLConnection connection = post("https://man.ps/water?api=login", body, null);
+            HttpURLConnection connection = post("https://man.ps/water/?api=login", body, null);
             String response = read(connection.getResponseCode() < 400 ? connection.getInputStream() : connection.getErrorStream());
             JSONObject result = new JSONObject(response);
             if (!result.optBoolean("ok")) return response;
@@ -111,7 +111,7 @@ public class MainActivity extends Activity {
             JSONArray items = new JSONArray();
             for (int i = 0; i < all.length(); i++) if (!all.getJSONObject(i).optBoolean("synced", false)) items.put(all.getJSONObject(i));
             if (items.length() == 0) { prefs().edit().putLong("last_sync", System.currentTimeMillis()).apply(); return new JSONObject().put("ok", true).put("count", 0).toString(); }
-            HttpURLConnection connection = post("https://man.ps/water?api=sync_offline", new JSONObject().put("items", items), cookie);
+            HttpURLConnection connection = post("https://man.ps/water/?api=sync_offline", new JSONObject().put("items", items), cookie);
             String response = read(connection.getResponseCode() < 400 ? connection.getInputStream() : connection.getErrorStream());
             JSONObject result = new JSONObject(response);
             if (connection.getResponseCode() == 401) prefs().edit().putBoolean("account_connected", false).remove("session_cookie").apply();
