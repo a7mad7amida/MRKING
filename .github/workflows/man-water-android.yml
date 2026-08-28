@@ -21,10 +21,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Extract Android project
+      - name: Extract verified Android project
         run: |
           mkdir -p build-man-water
-          unzip -q man-water-android/MAN-Water-Android-v1.0.6.zip -d build-man-water
+          unzip -t man-water-android/MAN-Water-Android-v1.0.6-fixed.zip
+          unzip -q man-water-android/MAN-Water-Android-v1.0.6-fixed.zip -d build-man-water
       - name: Build debug APK
         working-directory: build-man-water/MAN-Water-Android-v1.0.0
         run: gradle assembleDebug --stacktrace --console=plain
