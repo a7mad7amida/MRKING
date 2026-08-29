@@ -1,4 +1,4 @@
-name: Build MAN Water APK Offline First
+name: Build MAN Water Google Play Bundle
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ on:
       - ".github/workflows/man-water-android.yml"
 
 jobs:
-  build-apk:
+  build-play-bundle:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -23,18 +23,44 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Prepare offline-first Android project
+      - name: Prepare Android project
         run: |
           mkdir -p build-man-water
           unzip -t man-water-android/MAN-Water-Android-v1.3.0.zip
           unzip -q man-water-android/MAN-Water-Android-v1.3.0.zip -d build-man-water
           cp -a man-water-android/v1.4-overrides/app/. build-man-water/MAN-Water-Android-v1.0.0/app/
-      - name: Build debug APK
+      - name: Create temporary signing key
+        working-directory: build-man-water/MAN-Water-Android-v1.0.0/app
+        shell: bash
+        run: |
+          set +x
+          KEY_PASSWORD="$(openssl rand -hex 24)"
+          keytool -genkeypair -keystore upload-key.jks -storepass "$KEY_PASSWORD" -keypass "$KEY_PASSWORD" -alias man-water-upload -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=MAN Water, OU=MAN, O=MAN, L=Gaza, C=PS"
+          printf 'alias=man-water-upload\nstorePassword=%s\nkeyPassword=%s\n' "$KEY_PASSWORD" "$KEY_PASSWORD" > upload-key-info.txt
+          echo "MAN_WATER_KEYSTORE=$PWD/upload-key.jks" >> "$GITHUB_ENV"
+          echo "MAN_WATER_STORE_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "MAN_WATER_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "MAN_WATER_KEY_ALIAS=man-water-upload" >> "$GITHUB_ENV"
+      - name: Build signed AAB
         working-directory: build-man-water/MAN-Water-Android-v1.0.0
-        run: gradle assembleDebug --stacktrace --console=plain
-      - name: Upload APK
+        run: gradle bundleRelease --stacktrace --console=plain
+      - name: Encrypt signing-key backup
+        shell: bash
+        run: |
+          set +x
+          mkdir -p play-output backup-src
+          cp build-man-water/MAN-Water-Android-v1.0.0/app/build/outputs/bundle/release/app-release.aab play-output/MAN-Water-v1.4.5.aab
+          cp build-man-water/MAN-Water-Android-v1.0.0/app/upload-key.jks backup-src/
+          cp build-man-water/MAN-Water-Android-v1.0.0/app/upload-key-info.txt backup-src/
+          tar -C backup-src -cf signing-backup.tar .
+          BACKUP_PASSWORD="$(openssl rand -hex 32)"
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in signing-backup.tar -out play-output/signing-backup.enc -pass pass:"$BACKUP_PASSWORD"
+          printf '%s' "$BACKUP_PASSWORD" | openssl pkeyutl -encrypt -pubin -inkey man-water-android/build-wrap-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -out play-output/signing-backup-password.enc
+          sha256sum play-output/MAN-Water-v1.4.5.aab play-output/signing-backup.enc > play-output/SHA256SUMS.txt
+          rm -rf backup-src signing-backup.tar
+      - name: Upload encrypted Play files
         uses: actions/upload-artifact@v4
         with:
-          name: MAN-Water-APK-v1.4.5-PERSISTENT-LOGIN-SYNC-30S
-          path: build-man-water/MAN-Water-Android-v1.0.0/app/build/outputs/apk/debug/app-debug.apk
+          name: MAN-Water-Google-Play-v1.4.5
+          path: play-output/*
           if-no-files-found: error
