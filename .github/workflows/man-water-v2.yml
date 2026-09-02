@@ -21,6 +21,27 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
+      - name: Restore permanent app signing key
+        uses: actions/cache@v4
+        with:
+          path: man-water-app/.signing
+          key: man-water-stable-signing-v1
+      - name: Create permanent app signing key once
+        run: |
+          mkdir -p man-water-app/.signing
+          if [ ! -s man-water-app/.signing/man-water-stable.jks ]; then
+            SIGNING_PASSWORD="$(openssl rand -base64 36 | tr -d '\n')"
+            printf '%s' "$SIGNING_PASSWORD" > man-water-app/.signing/password.txt
+            keytool -genkeypair -v \
+              -keystore man-water-app/.signing/man-water-stable.jks \
+              -storepass "$SIGNING_PASSWORD" \
+              -keypass "$SIGNING_PASSWORD" \
+              -alias man-water \
+              -keyalg RSA -keysize 4096 -validity 10000 \
+              -dname "CN=MAN Water, OU=MAN, O=MAN, L=Gaza, C=PS"
+          fi
+          test -s man-water-app/.signing/password.txt
+          test -s man-water-app/.signing/man-water-stable.jks
       - name: Validate project
         working-directory: man-water-app
         run: node --check app/src/main/assets/app.js && gradle tasks --console=plain
@@ -28,11 +49,11 @@ jobs:
         working-directory: man-water-app
         run: gradle assembleDebug --stacktrace --console=plain
       - name: Rename APK
-        run: cp man-water-app/app/build/outputs/apk/debug/app-debug.apk MAN-Water-v2.0.4.apk
+        run: cp man-water-app/app/build/outputs/apk/debug/app-debug.apk MAN-Water-v2.0.5-STABLE.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MAN-Water-v2.0.4-APK
-          path: MAN-Water-v2.0.4.apk
+          name: MAN-Water-v2.0.5-STABLE-APK
+          path: MAN-Water-v2.0.5-STABLE.apk
           if-no-files-found: error
           retention-days: 30

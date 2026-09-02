@@ -1,5 +1,9 @@
 plugins { id 'com.android.application' }
 
+def signingDirectory = file('../.signing')
+def signingPasswordFile = new File(signingDirectory, 'password.txt')
+def stableSigningPassword = signingPasswordFile.exists() ? signingPasswordFile.getText('UTF-8').trim() : ''
+
 android {
     namespace 'ps.man.water'
     compileSdk 35
@@ -8,12 +12,25 @@ android {
         applicationId 'ps.man.water'
         minSdk 26
         targetSdk 35
-        versionCode 204
-        versionName '2.0.4'
+        versionCode 205
+        versionName '2.0.5'
+    }
+
+    signingConfigs {
+        stableDebug {
+            storeFile file('../.signing/man-water-stable.jks')
+            storePassword stableSigningPassword
+            keyAlias 'man-water'
+            keyPassword stableSigningPassword
+        }
     }
 
     buildTypes {
         release { minifyEnabled false }
-        debug { applicationIdSuffix '.debug'; versionNameSuffix '-debug' }
+        debug {
+            applicationIdSuffix '.debug'
+            versionNameSuffix '-debug'
+            if (stableSigningPassword) signingConfig signingConfigs.stableDebug
+        }
     }
 }
