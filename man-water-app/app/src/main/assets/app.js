@@ -1,6 +1,6 @@
 const STORE='man_water_v2';
 const defaults={queue:[],history:[],pending:[],account:null,settings:{sound:true,notifications:true,priority:'high',ringtone:'',alerts:[{before:90,duration:5,label:'تبقى دقيقة ونصف',enabled:true},{before:60,duration:5,label:'تبقت دقيقة واحدة',enabled:true},{before:0,duration:5,label:'انتهى الوقت',enabled:true}]},lastStatus:'idle',transitionAt:0};
-let state=loadState(),nativeState={status:'idle',remaining:0,duration:0},syncing=false,wasFinished=false,lastHistoryPull=0,pullingHistory=false;
+let state=loadState(),nativeState={status:'idle',remaining:0,duration:0},syncing=false,wasFinished=false,lastHistoryPull=0,pullingHistory=false,lastConnection=null,syncWatchdog=0,historyWatchdog=0;
 const $=id=>document.getElementById(id),esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function loadState(){try{return Object.assign({},defaults,JSON.parse(localStorage.getItem(STORE)||'{}'))}catch(e){return structuredClone(defaults)}}
 function persist(){localStorage.setItem(STORE,JSON.stringify(state))}
@@ -15,8 +15,8 @@ window.NativeApp={
  onConnection(online){setConnection(!!online)},
  onRingtoneSelected(uri){state.settings.ringtone=uri;persist();$('ringtoneLabel').textContent='تم اختيار نغمة من الهاتف'},
  onLogin(result){$('loginMessage').textContent=result.ok?'تم ربط الحساب بنجاح':(result.error||'فشل تسجيل الدخول');if(result.ok){state.account=Object.assign({username:$('usernameInput').value,connectedAt:Date.now()},result.user||{});persist();setTimeout(()=>closeModal('loginModal'),450);renderSettings();pullHistory(true)}},
- onSync(result){syncing=false;if(result&&result.ok){let done=new Set(result.synced||[]);state.pending=state.pending.filter(x=>!done.has(x.uuid));state.history.forEach(x=>{if(done.has(x.uuid))x.synced=true});persist();renderHistory();renderSettings();$('syncText').textContent='تمت المزامنة الآن';pullHistory(true)}else $('syncText').textContent='بانتظار إعادة المزامنة'},
- onHistory(result){pullingHistory=false;if(!result||!result.ok)return;let pendingIds=new Set(state.pending.map(x=>x.uuid)),deleted=new Set((result.deleted||[]).map(x=>x.sync_uuid)),server=(result.records||[]).map(normalizeServerRecord).filter(x=>!deleted.has(x.uuid));let map=new Map(server.map(x=>[x.uuid,x]));state.history.filter(x=>pendingIds.has(x.uuid)&&!deleted.has(x.uuid)).forEach(x=>{if(!map.has(x.uuid))map.set(x.uuid,x)});state.history=[...map.values()].sort((a,b)=>new Date(b.start_at)-new Date(a.start_at));state.lastHistorySync=Date.now();persist();renderHistory();renderSettings();$('syncText').textContent='السجل متزامن'}
+ onSync(result){clearTimeout(syncWatchdog);syncing=false;if(result&&result.ok){let done=new Set(result.synced||[]);state.pending=state.pending.filter(x=>!done.has(x.uuid));state.history.forEach(x=>{if(done.has(x.uuid))x.synced=true});persist();renderHistory();renderSettings();$('syncText').textContent='تمت المزامنة الآن';pullHistory(true)}else $('syncText').textContent='بانتظار إعادة المزامنة'},
+ onHistory(result){clearTimeout(historyWatchdog);pullingHistory=false;if(!result||!result.ok)return;let pendingIds=new Set(state.pending.map(x=>x.uuid)),deleted=new Set((result.deleted||[]).map(x=>x.sync_uuid)),server=(result.records||[]).map(normalizeServerRecord).filter(x=>!deleted.has(x.uuid));let map=new Map(server.map(x=>[x.uuid,x]));state.history.filter(x=>pendingIds.has(x.uuid)&&!deleted.has(x.uuid)).forEach(x=>{if(!map.has(x.uuid))map.set(x.uuid,x)});state.history=[...map.values()].sort((a,b)=>new Date(b.start_at)-new Date(a.start_at));state.lastHistorySync=Date.now();persist();renderHistory();renderSettings();$('syncText').textContent='السجل متزامن'}
 };
 
 function normalizeServerRecord(x){return{uuid:x.sync_uuid||x.offline_uuid||('server-'+x.id),server_id:x.id,name:x.subscriber||x.subscriber_name||'',subscriber_name:x.subscriber||x.subscriber_name||'',pump:x.pump_name||assignedPump(),pump_id:+x.pump_id||+state.account?.pump_id||0,start_at:x.start_at,end_at:x.end_at,seconds:+x.seconds||0,planned_seconds:+x.planned_seconds||+x.seconds||0,paused_seconds:+x.paused_seconds||0,cost:+x.cost||0,synced:true}}
@@ -56,11 +56,11 @@ function editAlert(i,key,value){state.settings.alerts[i][key]=key==='before'?Mat
 function deleteAlert(i){state.settings.alerts.splice(i,1);persist();renderSettings()}
 function openLogin(){$('loginModal').classList.add('open');$('loginMessage').textContent=''}
 function doLogin(e){e.preventDefault();$('loginMessage').textContent='جاري الاتصال...';android('login',$('usernameInput').value,$('passwordInput').value)}
-function setConnection(online){$('onlineDot').classList.toggle('online',online);$('settingsDot').classList.toggle('online',online);$('connectionText').textContent=online?'متصل':'غير متصل';$('settingsConnection').textContent=online?'متصل — المزامنة تلقائية':'أوفلاين — الحفظ مستمر';if(online){syncNow();pullHistory(false)}}
-function syncNow(){if(syncing||!state.account||!state.pending.length||android('online')!==true)return;syncing=true;$('syncText').textContent='جاري المزامنة';android('sync',JSON.stringify(state.pending))}
-function pullHistory(force){if(pullingHistory||!state.account||android('online')!==true||(!force&&Date.now()-lastHistoryPull<30000))return;pullingHistory=true;lastHistoryPull=Date.now();android('history')}
+function setConnection(online){let restored=online&&lastConnection===false;lastConnection=online;$('onlineDot').classList.toggle('online',online);$('settingsDot').classList.toggle('online',online);$('connectionText').textContent=online?'متصل':'غير متصل';$('settingsConnection').textContent=online?'متصل — المزامنة تلقائية':'أوفلاين — الحفظ مستمر';if(online){syncNow();pullHistory(restored)}}
+function syncNow(){if(syncing||!state.account||!state.pending.length||android('online')!==true)return;syncing=true;$('syncText').textContent='جاري المزامنة';clearTimeout(syncWatchdog);syncWatchdog=setTimeout(()=>{syncing=false;$('syncText').textContent='إعادة محاولة المزامنة';if(android('online')===true)syncNow()},20000);android('sync',JSON.stringify(state.pending))}
+function pullHistory(force){if(pullingHistory||!state.account||android('online')!==true||(!force&&Date.now()-lastHistoryPull<30000))return;pullingHistory=true;lastHistoryPull=Date.now();clearTimeout(historyWatchdog);historyWatchdog=setTimeout(()=>{pullingHistory=false;if(android('online')===true)pullHistory(true)},20000);android('history')}
 
-setInterval(()=>{let online=android('online')===true;setConnection(online);if(online)syncNow()},1000);
+setInterval(()=>{let online=android('online')===true;setConnection(online);if(online)syncNow()},15000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){try{NativeApp.onTimer(JSON.parse(android('state')))}catch(e){}renderAll()}});
 try{NativeApp.onTimer(JSON.parse(android('state')||'{"status":"idle"}'))}catch(e){}
 renderAll();

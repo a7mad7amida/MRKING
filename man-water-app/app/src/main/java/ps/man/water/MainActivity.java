@@ -19,6 +19,10 @@ import org.json.*;
 public class MainActivity extends Activity {
     private WebView web;
     private final ExecutorService network = Executors.newSingleThreadExecutor();
+    private ConnectivityManager connectivityManager;
+    private ConnectivityManager.NetworkCallback networkCallback;
+    private final Handler connectionHandler = new Handler(Looper.getMainLooper());
+    private Boolean lastOnlineState = null;
     private static final int RINGTONE_REQUEST = 44;
     private final BroadcastReceiver timerReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -48,6 +52,7 @@ public class MainActivity extends Activity {
         });
         web.addJavascriptInterface(new Bridge(), "Android");
         web.loadUrl("file:///android_asset/index.html");
+        startNetworkMonitor();
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 55);
     }
@@ -64,6 +69,15 @@ public class MainActivity extends Activity {
         super.onPause();
     }
 
+    @Override protected void onDestroy() {
+        if (connectivityManager != null && networkCallback != null) {
+            try { connectivityManager.unregisterNetworkCallback(networkCallback); } catch (Exception ignored) {}
+        }
+        connectionHandler.removeCallbacksAndMessages(null);
+        network.shutdownNow();
+        super.onDestroy();
+    }
+
     @Override public void onBackPressed() {
         if (web.canGoBack()) web.goBack(); else moveTaskToBack(true);
     }
@@ -73,6 +87,36 @@ public class MainActivity extends Activity {
         Network n = cm.getActiveNetwork();
         NetworkCapabilities c = n == null ? null : cm.getNetworkCapabilities(n);
         return c != null && c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+    }
+
+    private void startNetworkMonitor() {
+        connectivityManager = (ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
+        networkCallback = new ConnectivityManager.NetworkCallback() {
+            @Override public void onAvailable(Network network) { publishConnectionSoon(); }
+            @Override public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) { publishConnectionSoon(); }
+            @Override public void onLost(Network network) { publishConnectionSoon(); }
+            @Override public void onUnavailable() { publishConnection(false, false); }
+        };
+        try {
+            connectivityManager.registerDefaultNetworkCallback(networkCallback);
+        } catch (Exception ignored) {
+            NetworkRequest request = new NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build();
+            connectivityManager.registerNetworkCallback(request, networkCallback);
+        }
+        publishConnectionSoon();
+    }
+
+    private void publishConnectionSoon() {
+        connectionHandler.removeCallbacksAndMessages(null);
+        connectionHandler.postDelayed(() -> publishConnection(isOnline(), false), 250);
+        connectionHandler.postDelayed(() -> publishConnection(isOnline(), true), 1800);
+    }
+
+    private void publishConnection(boolean online, boolean force) {
+        if (!force && lastOnlineState != null && lastOnlineState == online) return;
+        lastOnlineState = online;
+        callJs("window.NativeApp&&NativeApp.onConnection(" + (online ? "true" : "false") + ")");
     }
 
     private void callJs(String js) { runOnUiThread(() -> web.evaluateJavascript(js, null)); }

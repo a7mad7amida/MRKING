@@ -28,11 +28,11 @@ jobs:
         working-directory: man-water-app
         run: gradle assembleDebug --stacktrace --console=plain
       - name: Rename APK
-        run: cp man-water-app/app/build/outputs/apk/debug/app-debug.apk MAN-Water-v2.0.2.apk
+        run: cp man-water-app/app/build/outputs/apk/debug/app-debug.apk MAN-Water-v2.0.3.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MAN-Water-v2.0.2-APK
-          path: MAN-Water-v2.0.2.apk
+          name: MAN-Water-v2.0.3-APK
+          path: MAN-Water-v2.0.3.apk
           if-no-files-found: error
           retention-days: 30
