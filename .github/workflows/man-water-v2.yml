@@ -23,16 +23,16 @@ jobs:
           gradle-version: "8.9"
       - name: Validate project
         working-directory: man-water-app
-        run: gradle tasks --console=plain
+        run: node --check app/src/main/assets/app.js && gradle tasks --console=plain
       - name: Build APK
         working-directory: man-water-app
         run: gradle assembleDebug --stacktrace --console=plain
       - name: Rename APK
-        run: cp man-water-app/app/build/outputs/apk/debug/app-debug.apk MAN-Water-v2.0.0.apk
+        run: cp man-water-app/app/build/outputs/apk/debug/app-debug.apk MAN-Water-v2.0.2.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MAN-Water-v2.0.0-APK
-          path: MAN-Water-v2.0.0.apk
+          name: MAN-Water-v2.0.2-APK
+          path: MAN-Water-v2.0.2.apk
           if-no-files-found: error
           retention-days: 30
