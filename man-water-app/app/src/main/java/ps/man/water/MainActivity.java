@@ -137,5 +137,9 @@ public class MainActivity extends Activity {
             network.execute(() -> { try { callJs("window.NativeApp.onSync(" + api("sync_offline",new JSONObject().put("items",new JSONArray(itemsJson)).toString()) + ")"); }
                 catch(Exception e) { callJs("window.NativeApp.onSync({ok:false,error:"+JSONObject.quote(e.getMessage())+"})"); } });
         }
+        @JavascriptInterface public void history() {
+            network.execute(() -> { try { callJs("window.NativeApp.onHistory(" + api("sync_snapshot","{}") + ")"); }
+                catch(Exception e) { callJs("window.NativeApp.onHistory({ok:false,error:"+JSONObject.quote(e.getMessage())+"})"); } });
+        }
     }
 }
