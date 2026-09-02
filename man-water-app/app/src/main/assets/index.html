@@ -1,0 +1,32 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="#087f9c"><title>MAN Water</title><link rel="stylesheet" href="app.css"></head><body>
+<div class="appShell">
+  <header><div class="mark"><span>م</span><div><b>MAN Water</b><small>مياه المشاهرة</small></div></div><div class="connection"><i id="onlineDot"></i><div><b id="connectionText">جاري الفحص</b><small id="syncText">الحساب محفوظ</small></div></div></header>
+
+  <main>
+    <section id="homePage" class="page active">
+      <div class="hero"><div><small>عداد الغاطس الذكي</small><h1 id="heroTitle">جاهز للتشغيل</h1></div><button class="addFloat" onclick="openAdd()" aria-label="إضافة مشترك">＋</button></div>
+      <section class="meterCard">
+        <div class="meter" id="meter"><div class="water" id="water"><div class="wave one"></div><div class="wave two"></div></div><div class="meterContent"><span id="progressText">0%</span><strong id="timerText">00:00:00</strong><small id="currentName">لا يوجد مشترك حالي</small><em id="currentPump">الغاطس الأول</em></div></div>
+        <div class="timerActions" id="timerActions"><button class="pause" id="pauseBtn" onclick="togglePause()">Ⅱ إيقاف مؤقت</button><button class="finish" onclick="finishTimer()">■ إنهاء</button></div>
+        <div class="startHint" id="startHint"><b>ابدأ بإضافة المشترك الأول</b><small>اضغط زر + وحدد الاسم والوقت</small></div>
+      </section>
+      <section class="queueCard"><div class="sectionTitle"><div><small>الجدولة التالية</small><b id="queueCount">لا يوجد انتظار</b></div><button onclick="openAdd()">إضافة مشترك</button></div><div id="queueList" class="queueList"></div></section>
+    </section>
+
+    <section id="historyPage" class="page"><div class="pageHead"><div><small>سجل العمليات</small><h2>المشتركون المنتهون</h2></div><span id="historyCount">0</span></div><div id="historyList" class="historyList"></div></section>
+
+    <section id="settingsPage" class="page"><div class="pageHead"><div><small>لوحة التحكم</small><h2>الإعدادات والمزامنة</h2></div><span class="gear">⚙</span></div>
+      <section class="settingsCard accountCard"><div class="settingRow"><span class="settingIcon account">●</span><div><b>حساب العامل</b><small id="accountLabel">غير مسجل</small></div><button onclick="openLogin()" id="loginButton">تسجيل الدخول</button></div><div class="syncLine"><i id="settingsDot"></i><span id="settingsConnection">غير متصل</span><b id="pendingCount">0 بانتظار المزامنة</b></div></section>
+      <section class="settingsCard"><div class="settingRow clickable" onclick="chooseRingtone()"><span class="settingIcon bell">♪</span><div><b>نغمة التنبيه</b><small id="ringtoneLabel">نغمة الجهاز المحددة</small></div><label class="switch" onclick="event.stopPropagation()"><input id="soundEnabled" type="checkbox" checked onchange="saveSettings()"><span></span></label></div><div class="settingRow clickable" onclick="openNotificationSettings()"><span class="settingIcon notify">!</span><div><b>الإشعارات المنبثقة</b><small>تظهر بجانب الساعة وخلفية الهاتف</small></div><label class="switch" onclick="event.stopPropagation()"><input id="notificationEnabled" type="checkbox" checked onchange="saveSettings()"><span></span></label></div><div class="settingRow"><span class="settingIcon priority">↑</span><div><b>أولوية الإشعار</b><small>حدد قوة ظهور التنبيه</small></div><select id="notificationPriority" onchange="saveSettings()"><option value="high">عالية</option><option value="normal">عادية</option><option value="silent">صامتة</option></select></div></section>
+      <section class="settingsCard"><div class="sectionTitle"><div><small>أوقات التنبيه</small><b>تنبيهات متعددة قابلة للتعديل</b></div><button onclick="addAlertRule()">＋ تنبيه</button></div><div id="alertRules"></div></section>
+      <button class="batteryBtn" onclick="openNotificationSettings()">ضبط صلاحيات الإشعارات والبطارية</button>
+    </section>
+  </main>
+
+  <nav><button class="active" data-page="homePage" onclick="showPage(this)"><span class="dropIcon">♦</span><small>الرئيسية</small></button><button data-page="historyPage" onclick="showPage(this)"><span>◷</span><small>السجل</small></button><button class="centerAdd" onclick="openAdd()"><span>＋</span></button><button data-page="settingsPage" onclick="showPage(this)"><span>♬</span><small>التنبيهات</small></button><button data-page="settingsPage" onclick="showPage(this)"><span>⚙</span><small>التحكم</small></button></nav>
+</div>
+
+<div id="addModal" class="modal"><form class="sheet" onsubmit="saveQueue(event)"><div class="sheetHandle"></div><div class="sheetTitle"><div><small>جدولة جديدة</small><b id="addTitle">إضافة مشترك</b></div><button type="button" onclick="closeModal('addModal')">×</button></div><input id="editQueueId" type="hidden"><label>اسم المشترك<input id="subscriberInput" required placeholder="اكتب الاسم هنا"></label><div class="timeGrid"><label>الوقت بالدقائق<input id="minutesInput" type="number" min="1" max="600" value="10" required></label><label>الغاطس<select id="pumpInput"><option>الغاطس الأول</option><option>الغاطس الثاني</option></select></label></div><div class="quickTimes"><button type="button" onclick="setMinutes(5)">5</button><button type="button" onclick="setMinutes(10)">10</button><button type="button" onclick="setMinutes(15)">15</button><button type="button" onclick="setMinutes(30)">30</button><button type="button" onclick="setMinutes(60)">60</button></div><button class="primary" type="submit">حفظ في الجدولة</button></form></div>
+<div id="loginModal" class="modal"><form class="sheet" onsubmit="doLogin(event)"><div class="sheetHandle"></div><div class="sheetTitle"><div><small>اتصال آمن مرة واحدة</small><b>تسجيل حساب العامل</b></div><button type="button" onclick="closeModal('loginModal')">×</button></div><label>اسم المستخدم<input id="usernameInput" required autocomplete="username"></label><label>كلمة المرور<input id="passwordInput" type="password" required autocomplete="current-password"></label><button class="primary" type="submit">تسجيل وربط الجهاز</button><small id="loginMessage"></small></form></div>
+<div id="detailModal" class="modal"><div class="sheet"><div class="sheetHandle"></div><div class="sheetTitle"><div><small>تفاصيل المشترك</small><b id="detailName"></b></div><button onclick="closeModal('detailModal')">×</button></div><div id="detailBody" class="detailBody"></div></div></div>
+<script src="app.js"></script></body></html>

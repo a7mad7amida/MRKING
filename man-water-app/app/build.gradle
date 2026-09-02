@@ -1,0 +1,19 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'ps.man.water'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'ps.man.water'
+        minSdk 26
+        targetSdk 35
+        versionCode 200
+        versionName '2.0.0'
+    }
+
+    buildTypes {
+        release { minifyEnabled false }
+        debug { applicationIdSuffix '.debug'; versionNameSuffix '-debug' }
+    }
+}

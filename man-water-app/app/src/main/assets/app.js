@@ -1,0 +1,61 @@
+const STORE='man_water_v2';
+const defaults={queue:[],history:[],pending:[],account:null,settings:{sound:true,notifications:true,priority:'high',ringtone:'',alerts:[{before:90,duration:5,label:'تبقى دقيقة ونصف',enabled:true},{before:60,duration:5,label:'تبقت دقيقة واحدة',enabled:true},{before:0,duration:5,label:'انتهى الوقت',enabled:true}]},lastStatus:'idle',transitionAt:0};
+let state=loadState(),nativeState={status:'idle',remaining:0,duration:0},syncing=false,wasFinished=false;
+const $=id=>document.getElementById(id),esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function loadState(){try{return Object.assign({},defaults,JSON.parse(localStorage.getItem(STORE)||'{}'))}catch(e){return structuredClone(defaults)}}
+function persist(){localStorage.setItem(STORE,JSON.stringify(state))}
+function uid(){return (crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random()).toString()}
+function fmt(s){s=Math.max(0,+s||0);return [Math.floor(s/3600),Math.floor(s%3600/60),Math.floor(s%60)].map(x=>String(x).padStart(2,'0')).join(':')}
+function time(ts){return new Date(ts).toLocaleTimeString('ar-PS',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+function dateTime(ts){return new Date(ts).toLocaleString('ar-PS',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+function android(name,...args){try{return window.Android&&Android[name]?Android[name](...args):null}catch(e){return null}}
+
+window.NativeApp={
+ onTimer(s){nativeState=typeof s==='string'?JSON.parse(s):s;handleNativeTransition();renderTimer()},
+ onConnection(online){setConnection(!!online)},
+ onRingtoneSelected(uri){state.settings.ringtone=uri;persist();$('ringtoneLabel').textContent='تم اختيار نغمة من الهاتف'},
+ onLogin(result){$('loginMessage').textContent=result.ok?'تم ربط الحساب بنجاح':(result.error||'فشل تسجيل الدخول');if(result.ok){state.account={username:$('usernameInput').value,connectedAt:Date.now()};persist();setTimeout(()=>closeModal('loginModal'),450);renderSettings()}},
+ onSync(result){syncing=false;if(result&&result.ok){let done=new Set(result.synced||[]);state.pending=state.pending.filter(x=>!done.has(x.uuid));state.history.forEach(x=>{if(done.has(x.uuid))x.synced=true});persist();renderHistory();renderSettings();$('syncText').textContent='تمت المزامنة الآن'}else $('syncText').textContent='بانتظار إعادة المزامنة'}
+};
+
+function handleNativeTransition(){let old=state.lastStatus||'idle',now=nativeState.status||'idle';if(now==='finished'&&old!=='finished'){completeCurrent(nativeState)}state.lastStatus=now;persist()}
+function current(){return state.queue[0]||null}
+function renderTimer(){let item=current(),status=nativeState.status||'idle',duration=+nativeState.duration||(+item?.seconds||0),left=status==='idle'?duration:+nativeState.remaining||0,progress=duration?Math.max(0,Math.min(100,(duration-left)/duration*100)):0;$('water').style.height=progress+'%';$('progressText').textContent=Math.round(progress)+'%';$('timerText').textContent=fmt(left);$('currentName').textContent=item?.name||nativeState.name||'لا يوجد مشترك حالي';$('currentPump').textContent=item?.pump||nativeState.pump||'الغاطس الأول';$('heroTitle').textContent=status==='running'?'العداد يعمل الآن':status==='paused'?'متوقف مؤقتًا':item?'جاهز لبدء الجدول':'جاهز للتشغيل';$('timerActions').classList.toggle('show',status==='running'||status==='paused');$('startHint').style.display=(status==='running'||status==='paused')?'none':'block';$('pauseBtn').textContent=status==='paused'?'▶ استئناف':'Ⅱ إيقاف مؤقت';if(status==='idle'&&item&&!state.transitionAt)startCurrent()}
+function renderQueue(){$('queueCount').textContent=state.queue.length?state.queue.length+' في الجدولة':'لا يوجد انتظار';$('queueList').innerHTML=state.queue.map((x,i)=>`<article class="queueItem"><span class="queueNumber">${i+1}</span><div><b>${esc(x.name)}</b><small>${x.minutes} دقيقة • ${esc(x.pump)}${i===0?' • الحالي':''}</small></div>${i===0&&['running','paused'].includes(nativeState.status)?'<em>يعمل</em>':`<div class="queueActions"><button onclick="editQueue('${x.id}')">تعديل</button><button class="delete" onclick="deleteQueue('${x.id}')">حذف</button></div>`}</article>`).join('')||'<div class="empty">أضف المشترك الأول ليظهر هنا</div>'}
+function renderHistory(){$('historyCount').textContent=state.history.length;$('historyList').innerHTML=state.history.map(x=>`<article class="historyItem" onclick="showDetails('${x.uuid}')"><span>${esc(x.name).slice(0,1)}</span><div><b>${esc(x.name)}</b><small>${dateTime(x.start_at)} • ${fmt(x.seconds)}</small></div><em>${x.synced?'محفوظ':'بانتظار المزامنة'}</em></article>`).join('')||'<div class="empty">لا توجد عمليات منتهية حتى الآن</div>'}
+function renderSettings(){let s=state.settings;$('soundEnabled').checked=s.sound;$('notificationEnabled').checked=s.notifications;$('notificationPriority').value=s.priority;$('accountLabel').textContent=state.account?'@'+state.account.username+' • مسجل على الجهاز':'غير مسجل';$('loginButton').textContent=state.account?'تغيير الحساب':'تسجيل الدخول';$('pendingCount').textContent=state.pending.length+' بانتظار المزامنة';$('alertRules').innerHTML=s.alerts.map((r,i)=>`<div class="alertRule"><input value="${esc(r.label)}" onchange="editAlert(${i},'label',this.value)"><input type="number" min="0" value="${r.before}" onchange="editAlert(${i},'before',this.value)" title="الثواني قبل النهاية"><button onclick="deleteAlert(${i})">حذف</button><small>قبل النهاية بالثواني • مدة ${r.duration} ث</small></div>`).join('');android('saveAlertSettings',JSON.stringify(s.alerts))}
+function renderAll(){renderTimer();renderQueue();renderHistory();renderSettings();setConnection(android('online')===true)}
+
+function openAdd(){if(['running','paused'].includes(nativeState.status)&&state.queue.length===0)return;resetAdd();$('addModal').classList.add('open')}
+function resetAdd(){$('editQueueId').value='';$('subscriberInput').value='';$('minutesInput').value=10;$('addTitle').textContent='إضافة مشترك'}
+function closeModal(id){$(id).classList.remove('open')}
+function setMinutes(v){$('minutesInput').value=v}
+function saveQueue(e){e.preventDefault();let id=$('editQueueId').value,item={id:id||uid(),uuid:id?(state.queue.find(x=>x.id===id)?.uuid||uid()):uid(),name:$('subscriberInput').value.trim(),minutes:+$('minutesInput').value,seconds:+$('minutesInput').value*60,pump:$('pumpInput').value};if(id){let i=state.queue.findIndex(x=>x.id===id);if(i>=0)state.queue[i]=item}else state.queue.push(item);persist();closeModal('addModal');renderQueue();renderTimer()}
+function editQueue(id){let i=state.queue.find(x=>x.id===id);if(!i||i===current()&&['running','paused'].includes(nativeState.status))return;$('editQueueId').value=i.id;$('subscriberInput').value=i.name;$('minutesInput').value=i.minutes;$('pumpInput').value=i.pump;$('addTitle').textContent='تعديل المشترك';$('addModal').classList.add('open')}
+function deleteQueue(id){let i=state.queue.findIndex(x=>x.id===id);if(i===0&&['running','paused'].includes(nativeState.status))return;state.queue.splice(i,1);persist();renderQueue();renderTimer()}
+
+function startCurrent(){let item=current();if(!item||['running','paused'].includes(nativeState.status))return;item.start_at=new Date().toISOString();item.startedAt=Date.now();persist();android('startTimer',item.name,item.seconds,item.pump,item.uuid);queueServerStart(item);renderQueue()}
+function togglePause(){if(nativeState.status==='paused'){android('resumeTimer');queueEvent('resume')}else{android('pauseTimer');queueEvent('pause')}}
+function finishTimer(){if(!current())return;if(confirm('إنهاء وقت المشترك الحالي وحفظ العملية؟'))android('stopTimer')}
+function completeCurrent(ns){let item=current();if(!item)return;let end=ns.finishedAt||Date.now(),seconds=Math.max(1,Math.round((+ns.duration||item.seconds)-(+ns.remaining||0)));let record={uuid:item.uuid,name:item.name,subscriber_name:item.name,pump:item.pump,pump_id:item.pump.includes('الثاني')?2:1,start_at:item.start_at||new Date(end-seconds*1000).toISOString(),end_at:new Date(end).toISOString(),seconds,planned_seconds:item.seconds,paused_seconds:+ns.pausedTotal||0,synced:false};state.history.unshift(record);state.pending.push(record);state.queue.shift();state.transitionAt=Date.now()+10000;android('acknowledgeFinished');persist();renderQueue();renderHistory();renderSettings();setTimeout(()=>{state.transitionAt=0;state.lastStatus='idle';persist();nativeState={status:'idle'};renderTimer()},10000)}
+function queueServerStart(item){/* يبدأ الخادم عند مزامنة السجل النهائي؛ يحتفظ التطبيق بالتوقيت محليًا */}
+function queueEvent(type){let item=current();if(item){item.events=item.events||[];item.events.push({type,at:new Date().toISOString()});persist()}}
+
+function showDetails(uuid){let x=state.history.find(i=>i.uuid===uuid);if(!x)return;$('detailName').textContent=x.name;$('detailBody').innerHTML=`<article><small>وقت التشغيل</small><b>${time(x.start_at)}</b></article><article><small>وقت الإيقاف</small><b>${time(x.end_at)}</b></article><article><small>المدة الفعلية</small><b>${fmt(x.seconds)}</b></article><article><small>الغاطس</small><b>${esc(x.pump)}</b></article><article class="wide"><small>حالة الحفظ</small><b>${x.synced?'تمت المزامنة مع الموقع':'محفوظ على الهاتف وبانتظار الإنترنت'}</b></article>`;$('detailModal').classList.add('open')}
+function showPage(btn){document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));$(btn.dataset.page).classList.add('active');document.querySelectorAll('nav button[data-page]').forEach(x=>x.classList.remove('active'));btn.classList.add('active');renderAll()}
+
+function chooseRingtone(){if(!$('soundEnabled').checked)return;android('chooseRingtone')}
+function openNotificationSettings(){android('openNotificationSettings')}
+function saveSettings(){state.settings.sound=$('soundEnabled').checked;state.settings.notifications=$('notificationEnabled').checked;state.settings.priority=$('notificationPriority').value;persist();android('saveAlertSettings',JSON.stringify(state.settings.alerts))}
+function addAlertRule(){let before=prompt('كم ثانية قبل انتهاء الوقت؟','30'),duration=prompt('مدة صوت التنبيه بالثواني؟','5');if(before===null||duration===null)return;state.settings.alerts.push({before:Math.max(0,+before||0),duration:Math.max(1,Math.min(30,+duration||5)),label:'تنبيه قبل '+before+' ثانية',enabled:true});persist();renderSettings()}
+function editAlert(i,key,value){state.settings.alerts[i][key]=key==='before'?Math.max(0,+value||0):value;persist();renderSettings()}
+function deleteAlert(i){state.settings.alerts.splice(i,1);persist();renderSettings()}
+function openLogin(){$('loginModal').classList.add('open');$('loginMessage').textContent=''}
+function doLogin(e){e.preventDefault();$('loginMessage').textContent='جاري الاتصال...';android('login',$('usernameInput').value,$('passwordInput').value)}
+function setConnection(online){$('onlineDot').classList.toggle('online',online);$('settingsDot').classList.toggle('online',online);$('connectionText').textContent=online?'متصل':'غير متصل';$('settingsConnection').textContent=online?'متصل — المزامنة تلقائية':'أوفلاين — الحفظ مستمر';if(online)syncNow()}
+function syncNow(){if(syncing||!state.account||!state.pending.length||android('online')!==true)return;syncing=true;$('syncText').textContent='جاري المزامنة';android('sync',JSON.stringify(state.pending))}
+
+setInterval(()=>{let online=android('online')===true;setConnection(online);if(online)syncNow()},1000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){try{NativeApp.onTimer(JSON.parse(android('state')))}catch(e){}renderAll()}});
+try{NativeApp.onTimer(JSON.parse(android('state')||'{"status":"idle"}'))}catch(e){}
+renderAll();
