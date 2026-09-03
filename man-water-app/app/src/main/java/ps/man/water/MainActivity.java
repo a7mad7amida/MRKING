@@ -61,6 +61,7 @@ public class MainActivity extends Activity {
         super.onResume();
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(timerReceiver, new IntentFilter(TimerService.BROADCAST), RECEIVER_NOT_EXPORTED);
         else registerReceiver(timerReceiver, new IntentFilter(TimerService.BROADCAST));
+        callJs("window.NativeApp&&NativeApp.onTimer(" + TimerService.stateJson(MainActivity.this) + ")");
         callJs("window.NativeApp&&NativeApp.onConnection(" + (isOnline() ? "true" : "false") + ")");
     }
 
@@ -161,6 +162,8 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void resumeTimer() { startForegroundService(new Intent(MainActivity.this,TimerService.class).setAction(TimerService.RESUME)); }
         @JavascriptInterface public void stopTimer() { startForegroundService(new Intent(MainActivity.this,TimerService.class).setAction(TimerService.STOP)); }
         @JavascriptInterface public void acknowledgeFinished() { getSharedPreferences(TimerService.PREFS,MODE_PRIVATE).edit().putString("status","idle").apply(); }
+        @JavascriptInterface public void saveQueue(String json) { try { new JSONArray(json); getSharedPreferences(TimerService.PREFS,MODE_PRIVATE).edit().putString("queue",json).apply(); } catch(Exception ignored) {} }
+        @JavascriptInterface public void acknowledgeCompleted() { getSharedPreferences(TimerService.PREFS,MODE_PRIVATE).edit().putString("completed","[]").apply(); }
         @JavascriptInterface public void saveAlertSettings(String json) { getSharedPreferences(TimerService.PREFS,MODE_PRIVATE).edit().putString("alerts",json).apply(); }
         @JavascriptInterface public void chooseRingtone() {
             runOnUiThread(() -> {
