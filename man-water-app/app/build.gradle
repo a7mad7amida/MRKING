@@ -1,5 +1,7 @@
 plugins { id 'com.android.application' }
 
+dependencies { implementation 'androidx.work:work-runtime:2.10.1' }
+
 def signingDirectory = file('../.signing')
 def signingPasswordFile = new File(signingDirectory, 'password.txt')
 def stableSigningPassword = signingPasswordFile.exists() ? signingPasswordFile.getText('UTF-8').trim() : ''
@@ -12,8 +14,8 @@ android {
         applicationId 'ps.man.water'
         minSdk 26
         targetSdk 35
-        versionCode 206
-        versionName '2.0.6'
+        versionCode 207
+        versionName '2.0.7'
     }
 
     signingConfigs {

@@ -5,6 +5,7 @@ import android.os.Build;
 
 public class BootReceiver extends BroadcastReceiver {
     @Override public void onReceive(Context context, Intent intent) {
+        BackgroundSync.schedule(context);
         String status = context.getSharedPreferences(TimerService.PREFS,Context.MODE_PRIVATE).getString("status","idle");
         if (!"idle".equals(status) && !"finished".equals(status)) {
             Intent service = new Intent(context,TimerService.class).setAction(TimerService.RESTORE);

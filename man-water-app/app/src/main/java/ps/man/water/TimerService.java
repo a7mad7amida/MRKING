@@ -123,6 +123,7 @@ public class TimerService extends Service {
                 .put("finishedAt",finishedAt).put("duration",duration).put("remaining",left)
                 .put("pausedTotal",prefs().getLong("pausedTotal",0)).put("natural",natural));
             prefs().edit().putString("completed",completed.toString()).apply();
+            BackgroundSync.schedule(this);
         }catch(Exception ignored){}
     }
 
@@ -164,6 +165,6 @@ public class TimerService extends Service {
 
     public static String stateJson(Context c) {
         SharedPreferences p=c.getSharedPreferences(PREFS,Context.MODE_PRIVATE);String status=p.getString("status","idle");long now=System.currentTimeMillis();long target="transition".equals(status)?p.getLong("transitionEndAt",0):p.getLong("endAt",0);int left="paused".equals(status)?p.getInt("pausedRemaining",0):(int)Math.max(0,(target-now+999)/1000);
-        try{return new JSONObject().put("status",status).put("name",p.getString("name","")).put("pump",p.getString("pump","")).put("uuid",p.getString("uuid","")).put("startedAt",p.getLong("startedAt",0)).put("endAt",p.getLong("endAt",0)).put("transitionEndAt",p.getLong("transitionEndAt",0)).put("finishedAt",p.getLong("finishedAt",0)).put("duration",p.getInt("duration",0)).put("remaining",left).put("pausedTotal",p.getLong("pausedTotal",0)).put("natural",p.getBoolean("natural",false)).put("queue",new JSONArray(p.getString("queue","[]"))).put("completed",new JSONArray(p.getString("completed","[]"))).toString();}catch(Exception e){return "{\"status\":\"idle\"}";}
+        try{return new JSONObject().put("status",status).put("name",p.getString("name","")).put("pump",p.getString("pump","")).put("uuid",p.getString("uuid","")).put("startedAt",p.getLong("startedAt",0)).put("endAt",p.getLong("endAt",0)).put("transitionEndAt",p.getLong("transitionEndAt",0)).put("finishedAt",p.getLong("finishedAt",0)).put("duration",p.getInt("duration",0)).put("remaining",left).put("pausedTotal",p.getLong("pausedTotal",0)).put("natural",p.getBoolean("natural",false)).put("queue",new JSONArray(p.getString("queue","[]"))).put("completed",new JSONArray(p.getString("completed","[]"))).put("synced",new JSONArray(p.getString("synced_native","[]"))).toString();}catch(Exception e){return "{\"status\":\"idle\"}";}
     }
 }

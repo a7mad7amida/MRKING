@@ -17,6 +17,7 @@ import java.util.concurrent.Executors;
 import org.json.*;
 
 public class MainActivity extends Activity {
+    public static final String ACCOUNT_PREFS="man_account";
     private WebView web;
     private final ExecutorService network = Executors.newSingleThreadExecutor();
     private ConnectivityManager connectivityManager;
@@ -33,6 +34,9 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        String legacyCookie=getPreferences(MODE_PRIVATE).getString("cookie","");
+        if(!legacyCookie.isEmpty()&&getSharedPreferences(ACCOUNT_PREFS,MODE_PRIVATE).getString("cookie","").isEmpty())
+            getSharedPreferences(ACCOUNT_PREFS,MODE_PRIVATE).edit().putString("cookie",legacyCookie).apply();
         web = new WebView(this);
         setContentView(web);
         WebSettings settings = web.getSettings();
@@ -127,11 +131,11 @@ public class MainActivity extends Activity {
         HttpURLConnection c = (HttpURLConnection)url.openConnection();
         c.setConnectTimeout(8000); c.setReadTimeout(12000); c.setRequestMethod("POST"); c.setDoOutput(true);
         c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-        String cookie = getPreferences(MODE_PRIVATE).getString("cookie", "");
+        String cookie = getSharedPreferences(ACCOUNT_PREFS,MODE_PRIVATE).getString("cookie", "");
         if (!cookie.isEmpty()) c.setRequestProperty("Cookie", cookie);
         try(OutputStream os = c.getOutputStream()) { os.write(body.getBytes(StandardCharsets.UTF_8)); }
         String setCookie = c.getHeaderField("Set-Cookie");
-        if (setCookie != null && !setCookie.isEmpty()) getPreferences(MODE_PRIVATE).edit().putString("cookie", setCookie.split(";",2)[0]).apply();
+        if (setCookie != null && !setCookie.isEmpty()) getSharedPreferences(ACCOUNT_PREFS,MODE_PRIVATE).edit().putString("cookie", setCookie.split(";",2)[0]).apply();
         InputStream input = c.getResponseCode() >= 400 ? c.getErrorStream() : c.getInputStream();
         if (input == null) return "{\"ok\":false,\"error\":\"لا توجد استجابة من الخادم\"}";
         ByteArrayOutputStream out = new ByteArrayOutputStream(); byte[] buf = new byte[4096]; int len;
@@ -164,6 +168,9 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void acknowledgeFinished() { getSharedPreferences(TimerService.PREFS,MODE_PRIVATE).edit().putString("status","idle").apply(); }
         @JavascriptInterface public void saveQueue(String json) { try { new JSONArray(json); getSharedPreferences(TimerService.PREFS,MODE_PRIVATE).edit().putString("queue",json).apply(); } catch(Exception ignored) {} }
         @JavascriptInterface public void acknowledgeCompleted() { getSharedPreferences(TimerService.PREFS,MODE_PRIVATE).edit().putString("completed","[]").apply(); }
+        @JavascriptInterface public void acknowledgeSynced() { getSharedPreferences(TimerService.PREFS,MODE_PRIVATE).edit().putString("synced_native","[]").apply(); }
+        @JavascriptInterface public void savePending(String json) { try { JSONArray a=new JSONArray(json);SharedPreferences p=getSharedPreferences(TimerService.PREFS,MODE_PRIVATE);if(!json.equals(p.getString("pending","[]"))){p.edit().putString("pending",json).apply();if(a.length()>0)BackgroundSync.schedule(MainActivity.this);} } catch(Exception ignored) {} }
+        @JavascriptInterface public void lockAccount(String json) { try { JSONObject a=new JSONObject(json);SharedPreferences p=getSharedPreferences(ACCOUNT_PREFS,MODE_PRIVATE);boolean changed=!p.getBoolean("locked",false)||!json.equals(p.getString("account",""));p.edit().putBoolean("locked",true).putString("account",a.toString()).apply();if(changed)BackgroundSync.schedule(MainActivity.this); } catch(Exception ignored) {} }
         @JavascriptInterface public void saveAlertSettings(String json) { getSharedPreferences(TimerService.PREFS,MODE_PRIVATE).edit().putString("alerts",json).apply(); }
         @JavascriptInterface public void chooseRingtone() {
             runOnUiThread(() -> {
@@ -177,6 +184,7 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,getPackageName())));
         }
         @JavascriptInterface public void login(String username, String password) {
+            if(getSharedPreferences(ACCOUNT_PREFS,MODE_PRIVATE).getBoolean("locked",false)){callJs("window.NativeApp.onLogin({ok:false,error:'الحساب مربوط مسبقًا بهذا الجهاز'})");return;}
             network.execute(() -> { try { callJs("window.NativeApp.onLogin(" + api("login",new JSONObject().put("username",username).put("password",password).toString()) + ")"); }
                 catch(Exception e) { callJs("window.NativeApp.onLogin({ok:false,error:"+JSONObject.quote(e.getMessage())+"})"); } });
         }
