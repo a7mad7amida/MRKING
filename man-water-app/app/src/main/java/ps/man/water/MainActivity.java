@@ -143,6 +143,15 @@ public class MainActivity extends Activity {
         return out.toString("UTF-8");
     }
 
+    private String apiWithAuth(String action,String body)throws Exception{
+        String response=api(action,body);try{if(new JSONObject(response).optBoolean("ok",false))return response;}catch(Exception ignored){}
+        if(AuthStore.ready(this)){
+            String login=api("login",new JSONObject().put("username",AuthStore.username(this)).put("password",AuthStore.password(this)).toString());
+            if(new JSONObject(login).optBoolean("ok",false))return api(action,body);
+        }
+        return response;
+    }
+
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == RINGTONE_REQUEST && resultCode == RESULT_OK && data != null) {
@@ -157,6 +166,7 @@ public class MainActivity extends Activity {
     public final class Bridge {
         @JavascriptInterface public String state() { return TimerService.stateJson(MainActivity.this); }
         @JavascriptInterface public boolean online() { return isOnline(); }
+        @JavascriptInterface public boolean needsCredentialUpgrade() { return getSharedPreferences(ACCOUNT_PREFS,MODE_PRIVATE).getBoolean("locked",false)&&!AuthStore.ready(MainActivity.this); }
         @JavascriptInterface public void startTimer(String name, int seconds, String pump, String uuid) {
             Intent i = new Intent(MainActivity.this, TimerService.class).setAction(TimerService.START);
             i.putExtra("name",name); i.putExtra("seconds",seconds); i.putExtra("pump",pump); i.putExtra("uuid",uuid);
@@ -184,16 +194,16 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,getPackageName())));
         }
         @JavascriptInterface public void login(String username, String password) {
-            if(getSharedPreferences(ACCOUNT_PREFS,MODE_PRIVATE).getBoolean("locked",false)){callJs("window.NativeApp.onLogin({ok:false,error:'الحساب مربوط مسبقًا بهذا الجهاز'})");return;}
-            network.execute(() -> { try { callJs("window.NativeApp.onLogin(" + api("login",new JSONObject().put("username",username).put("password",password).toString()) + ")"); }
+            if(getSharedPreferences(ACCOUNT_PREFS,MODE_PRIVATE).getBoolean("locked",false)&&AuthStore.ready(MainActivity.this)){callJs("window.NativeApp.onLogin({ok:false,error:'الحساب مربوط مسبقًا بهذا الجهاز'})");return;}
+            network.execute(() -> { try { String result=api("login",new JSONObject().put("username",username).put("password",password).toString());if(new JSONObject(result).optBoolean("ok",false)){AuthStore.save(MainActivity.this,username,password);getSharedPreferences(ACCOUNT_PREFS,MODE_PRIVATE).edit().putBoolean("locked",true).apply();}callJs("window.NativeApp.onLogin("+result+")"); }
                 catch(Exception e) { callJs("window.NativeApp.onLogin({ok:false,error:"+JSONObject.quote(e.getMessage())+"})"); } });
         }
         @JavascriptInterface public void sync(String itemsJson) {
-            network.execute(() -> { try { callJs("window.NativeApp.onSync(" + api("sync_offline",new JSONObject().put("items",new JSONArray(itemsJson)).toString()) + ")"); }
+            network.execute(() -> { try { callJs("window.NativeApp.onSync(" + apiWithAuth("sync_offline",new JSONObject().put("items",new JSONArray(itemsJson)).toString()) + ")"); }
                 catch(Exception e) { callJs("window.NativeApp.onSync({ok:false,error:"+JSONObject.quote(e.getMessage())+"})"); } });
         }
         @JavascriptInterface public void history() {
-            network.execute(() -> { try { callJs("window.NativeApp.onHistory(" + api("sync_snapshot","{}") + ")"); }
+            network.execute(() -> { try { callJs("window.NativeApp.onHistory(" + apiWithAuth("sync_snapshot","{}") + ")"); }
                 catch(Exception e) { callJs("window.NativeApp.onHistory({ok:false,error:"+JSONObject.quote(e.getMessage())+"})"); } });
         }
     }

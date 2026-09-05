@@ -58,7 +58,7 @@ function editAlert(i,key,value){state.settings.alerts[i][key]=key==='before'?Mat
 function deleteAlert(i){state.settings.alerts.splice(i,1);persist();renderSettings()}
 function openLogin(){if(state.account)return;$('loginModal').classList.add('open');$('loginMessage').textContent=''}
 function doLogin(e){e.preventDefault();$('loginMessage').textContent='جاري الاتصال...';android('login',$('usernameInput').value,$('passwordInput').value)}
-function setConnection(online){let restored=online&&lastConnection===false;lastConnection=online;$('onlineDot').classList.toggle('online',online);$('settingsDot').classList.toggle('online',online);$('connectionText').textContent=online?'متصل':'غير متصل';$('settingsConnection').textContent=online?'متصل — المزامنة تلقائية':'أوفلاين — الحفظ مستمر';if(online){syncNow();pullHistory(restored)}}
+function setConnection(online){let restored=online&&lastConnection===false;if(restored){clearTimeout(syncWatchdog);clearTimeout(historyWatchdog);syncing=false;pullingHistory=false}$('onlineDot').classList.toggle('online',online);$('settingsDot').classList.toggle('online',online);$('connectionText').textContent=online?'متصل':'غير متصل';$('settingsConnection').textContent=online?'متصل — المزامنة تلقائية':'أوفلاين — الحفظ مستمر';lastConnection=online;if(online){syncNow();pullHistory(restored)}}
 function syncNow(){if(syncing||!state.account||!state.pending.length||android('online')!==true)return;syncing=true;$('syncText').textContent='جاري المزامنة';clearTimeout(syncWatchdog);syncWatchdog=setTimeout(()=>{syncing=false;$('syncText').textContent='إعادة محاولة المزامنة';if(android('online')===true)syncNow()},20000);android('sync',JSON.stringify(state.pending))}
 function pullHistory(force){if(pullingHistory||!state.account||android('online')!==true||(!force&&Date.now()-lastHistoryPull<30000))return;pullingHistory=true;lastHistoryPull=Date.now();clearTimeout(historyWatchdog);historyWatchdog=setTimeout(()=>{pullingHistory=false;if(android('online')===true)pullHistory(true)},20000);android('history')}
 
@@ -67,3 +67,4 @@ setInterval(()=>{if(['running','paused','transition'].includes(nativeState.statu
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){try{NativeApp.onTimer(JSON.parse(android('state')))}catch(e){}renderAll()}});
 try{NativeApp.onTimer(JSON.parse(android('state')||'{"status":"idle"}'))}catch(e){}
 renderAll();
+if(state.account&&android('needsCredentialUpgrade')===true){$('loginButton').disabled=false;$('loginModal').classList.add('open');$('loginMessage').textContent='أدخل بيانات الحساب مرة واحدة لتفعيل التجديد التلقائي للجلسة دون حذف التطبيق'}

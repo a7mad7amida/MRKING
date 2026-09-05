@@ -45,7 +45,12 @@ public class BackgroundSync extends Worker {
                 ids.add(uuid);
             }
             if(items.length()==0)return Result.success();
-            JSONObject response=post(cookie,new JSONObject().put("items",items));if(!response.optBoolean("ok",false))return Result.retry();
+            JSONObject request=new JSONObject().put("items",items);JSONObject response=post("sync_offline",cookie,request);
+            if(!response.optBoolean("ok",false)&&AuthStore.ready(context)){
+                JSONObject login=post("login",cookie,new JSONObject().put("username",AuthStore.username(context)).put("password",AuthStore.password(context)));
+                if(login.optBoolean("ok",false)){cookie=account.getString("cookie","");response=post("sync_offline",cookie,request);}
+            }
+            if(!response.optBoolean("ok",false)){account.edit().putBoolean("reauth_required",!AuthStore.ready(context)).apply();return Result.retry();}
             JSONArray done=response.optJSONArray("synced");if(done==null)done=new JSONArray();Set<String> doneIds=new HashSet<>();
             JSONArray ack=new JSONArray(timer.getString("synced_native","[]"));for(int i=0;i<ack.length();i++)doneIds.add(ack.optString(i));
             for(int i=0;i<done.length();i++){String id=done.optString(i);if(!id.isEmpty()&&doneIds.add(id))ack.put(id);}
@@ -54,11 +59,12 @@ public class BackgroundSync extends Worker {
         }catch(Exception e){return Result.retry();}
     }
 
-    private JSONObject post(String cookie,JSONObject body)throws Exception{
-        URL url=new URL("https://man.ps/water/?api=sync_offline");HttpURLConnection c=(HttpURLConnection)url.openConnection();
+    private JSONObject post(String action,String cookie,JSONObject body)throws Exception{
+        URL url=new URL("https://man.ps/water/?api="+action);HttpURLConnection c=(HttpURLConnection)url.openConnection();
         c.setConnectTimeout(10000);c.setReadTimeout(15000);c.setRequestMethod("POST");c.setDoOutput(true);
         c.setRequestProperty("Content-Type","application/json; charset=utf-8");c.setRequestProperty("Cookie",cookie);
         try(OutputStream os=c.getOutputStream()){os.write(body.toString().getBytes(StandardCharsets.UTF_8));}
+        String setCookie=c.getHeaderField("Set-Cookie");if(setCookie!=null&&!setCookie.isEmpty())getApplicationContext().getSharedPreferences(MainActivity.ACCOUNT_PREFS,Context.MODE_PRIVATE).edit().putString("cookie",setCookie.split(";",2)[0]).apply();
         InputStream in=c.getResponseCode()>=400?c.getErrorStream():c.getInputStream();if(in==null)throw new IOException("empty response");
         ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] buffer=new byte[4096];int n;while((n=in.read(buffer))>0)out.write(buffer,0,n);
         return new JSONObject(out.toString("UTF-8"));
