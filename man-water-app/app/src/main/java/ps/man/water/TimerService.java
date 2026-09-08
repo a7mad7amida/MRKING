@@ -16,6 +16,7 @@ public class TimerService extends Service {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Set<Integer> fired = new HashSet<>();
     private Runnable tick;
+    private PowerManager.WakeLock wakeLock;
 
     @Override public void onCreate() { super.onCreate(); createChannels(); }
     @Override public IBinder onBind(Intent intent) { return null; }
@@ -26,22 +27,25 @@ public class TimerService extends Service {
         if (START.equals(action)) begin(intent);
         else if (PAUSE.equals(action)) pause();
         else if (RESUME.equals(action)) resume();
-        else if (STOP.equals(action)) finish(false);
+        else if (STOP.equals(action) && intent.getBooleanExtra("confirmed",false)) finish(false);
         else restore();
         return START_STICKY;
     }
 
     private void begin(Intent i) {
+        String currentStatus=prefs().getString("status","idle");
+        if("running".equals(currentStatus)||"paused".equals(currentStatus)||"transition".equals(currentStatus))return;
         long now=System.currentTimeMillis(); int seconds=Math.max(1,i.getIntExtra("seconds",60));
         prefs().edit().putString("status","running").putString("name",i.getStringExtra("name"))
             .putString("pump",i.getStringExtra("pump")).putString("uuid",i.getStringExtra("uuid"))
             .putLong("startedAt",now).putLong("endAt",now+seconds*1000L).putInt("duration",seconds)
-            .putInt("pausedRemaining",0).putLong("pausedAt",0).putLong("pausedTotal",0).apply();
+            .putInt("pausedRemaining",0).putLong("pausedAt",0).putLong("pausedTotal",0).commit();
         fired.clear(); startLoop();
     }
 
     private void beginNextFromQueue() {
         try {
+            if(!"transition".equals(prefs().getString("status","idle")))return;
             JSONArray queue=new JSONArray(prefs().getString("queue","[]"));
             if(queue.length()==0){goIdle();return;}
             JSONObject item=queue.getJSONObject(0);long now=System.currentTimeMillis();int seconds=Math.max(1,item.optInt("seconds",60));
@@ -50,14 +54,14 @@ public class TimerService extends Service {
                 .putString("name",item.optString("name","المشترك")).putString("pump",item.optString("pump","الغاطس"))
                 .putString("uuid",item.optString("uuid",item.optString("id",""))).putLong("startedAt",now)
                 .putLong("endAt",now+seconds*1000L).putInt("duration",seconds).putInt("pausedRemaining",0)
-                .putLong("pausedAt",0).putLong("pausedTotal",0).putLong("transitionEndAt",0).apply();
+                .putLong("pausedAt",0).putLong("pausedTotal",0).putLong("transitionEndAt",0).commit();
             fired.clear();broadcast();
         } catch(Exception e){goIdle();}
     }
 
     private void pause() {
         if(!"running".equals(prefs().getString("status","idle")))return;
-        int left=remaining(); prefs().edit().putString("status","paused").putInt("pausedRemaining",left).putLong("pausedAt",System.currentTimeMillis()).apply();
+        int left=remaining(); prefs().edit().putString("status","paused").putInt("pausedRemaining",left).putLong("pausedAt",System.currentTimeMillis()).commit();
         updateNotification(left,"متوقف مؤقتًا"); broadcast();
     }
 
@@ -65,7 +69,7 @@ public class TimerService extends Service {
         if(!"paused".equals(prefs().getString("status","idle")))return;
         int left=Math.max(1,prefs().getInt("pausedRemaining",1));
         long pausedAt=prefs().getLong("pausedAt",System.currentTimeMillis());long added=Math.max(0,(System.currentTimeMillis()-pausedAt)/1000);
-        prefs().edit().putString("status","running").putLong("endAt",System.currentTimeMillis()+left*1000L).putInt("pausedRemaining",0).putLong("pausedTotal",prefs().getLong("pausedTotal",0)+added).apply();
+        prefs().edit().putString("status","running").putLong("endAt",System.currentTimeMillis()+left*1000L).putInt("pausedRemaining",0).putLong("pausedTotal",prefs().getLong("pausedTotal",0)+added).commit();
         startLoop();
     }
 
@@ -75,12 +79,13 @@ public class TimerService extends Service {
     }
 
     private void startLoop() {
+        holdCpu();
         if(tick!=null)handler.removeCallbacks(tick);
         tick=new Runnable(){@Override public void run(){String status=prefs().getString("status","idle");int left=remaining();
             if("running".equals(status)){checkAlerts(left);if(left<=0){finish(true);return;}}
             else if("transition".equals(status)&&left<=0){beginNextFromQueue();status=prefs().getString("status","idle");left=remaining();}
             if("idle".equals(status)){goIdle();return;}
-            updateNotification(left,"paused".equals(status)?"متوقف مؤقتًا":"transition".equals(status)?"فاصل انتقال 10 ثوانٍ":"العداد يعمل");broadcast();handler.postDelayed(this,250);}};
+            updateNotification(left,"paused".equals(status)?"متوقف مؤقتًا":"transition".equals(status)?"فاصل انتقال 10 ثوانٍ":"العداد يعمل");broadcast();handler.postDelayed(this,1000);}};
         handler.post(tick);
     }
 
@@ -100,8 +105,10 @@ public class TimerService extends Service {
     }
 
     private void finish(boolean natural) {
+        String status=prefs().getString("status","idle");
+        if(!"running".equals(status)&&!"paused".equals(status))return;
         if(tick!=null)handler.removeCallbacks(tick);
-        long finishedAt=System.currentTimeMillis();
+        long finishedAt=natural?Math.max(prefs().getLong("startedAt",0),prefs().getLong("endAt",System.currentTimeMillis())):System.currentTimeMillis();
         archiveCompletion(finishedAt,natural);
         alert(natural?"انتهى وقت المشترك":"تم إنهاء العداد",natural?finalDuration():3);
         try {
@@ -122,15 +129,25 @@ public class TimerService extends Service {
                 .put("pump",prefs().getString("pump","الغاطس")).put("startedAt",prefs().getLong("startedAt",finishedAt-duration*1000L))
                 .put("finishedAt",finishedAt).put("duration",duration).put("remaining",left)
                 .put("pausedTotal",prefs().getLong("pausedTotal",0)).put("natural",natural));
-            prefs().edit().putString("completed",completed.toString()).apply();
+            prefs().edit().putString("completed",completed.toString()).commit();
             BackgroundSync.schedule(this);
         }catch(Exception ignored){}
     }
 
     private void goIdle(){
         if(tick!=null)handler.removeCallbacks(tick);
+        releaseCpu();
         NotificationManager nm=getSystemService(NotificationManager.class);nm.cancel(1001);stopForeground(STOP_FOREGROUND_REMOVE);stopSelf();
     }
+
+    private void holdCpu(){
+        if(wakeLock==null){PowerManager pm=(PowerManager)getSystemService(POWER_SERVICE);wakeLock=pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"MANWater:ActiveTimer");wakeLock.setReferenceCounted(false);}
+        if(!wakeLock.isHeld())wakeLock.acquire();
+    }
+
+    private void releaseCpu(){if(wakeLock!=null&&wakeLock.isHeld())wakeLock.release();}
+
+    @Override public void onDestroy(){if(tick!=null)handler.removeCallbacks(tick);releaseCpu();super.onDestroy();}
 
     private void createChannels() {
         NotificationManager nm=getSystemService(NotificationManager.class);
@@ -143,7 +160,7 @@ public class TimerService extends Service {
         PendingIntent content=PendingIntent.getActivity(this,0,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         String status=prefs().getString("status","idle");String name="transition".equals(status)?"المشترك التالي":prefs().getString("name","المشترك");String pump=prefs().getString("pump","الغاطس");
         Notification.Builder b=new Notification.Builder(this,CHANNEL_TIMER).setSmallIcon(ps.man.water.R.drawable.ic_water).setContentTitle(name+" • "+format(left)).setContentText(pump+" — "+state).setContentIntent(content).setOngoing(true).setOnlyAlertOnce(true).setCategory(Notification.CATEGORY_STOPWATCH).setVisibility(Notification.VISIBILITY_PUBLIC).setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE);
-        if(!"transition".equals(status)){if("paused".equals(status))b.addAction(new Notification.Action.Builder(null,"استئناف",serviceAction(RESUME,2)).build());else b.addAction(new Notification.Action.Builder(null,"إيقاف مؤقت",serviceAction(PAUSE,1)).build());b.addAction(new Notification.Action.Builder(null,"إنهاء",serviceAction(STOP,3)).build());}
+        if(!"transition".equals(status)){if("paused".equals(status))b.addAction(new Notification.Action.Builder(null,"استئناف",serviceAction(RESUME,2)).build());else b.addAction(new Notification.Action.Builder(null,"إيقاف مؤقت",serviceAction(PAUSE,1)).build());}
         startForeground(1001,b.build());
     }
 
