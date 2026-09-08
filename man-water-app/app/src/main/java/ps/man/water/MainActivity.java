@@ -12,6 +12,7 @@ import android.webkit.*;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.json.*;
@@ -174,9 +175,18 @@ public class MainActivity extends Activity {
         }
         @JavascriptInterface public void pauseTimer() { startForegroundService(new Intent(MainActivity.this,TimerService.class).setAction(TimerService.PAUSE)); }
         @JavascriptInterface public void resumeTimer() { startForegroundService(new Intent(MainActivity.this,TimerService.class).setAction(TimerService.RESUME)); }
-        @JavascriptInterface public void stopTimer() { startForegroundService(new Intent(MainActivity.this,TimerService.class).setAction(TimerService.STOP)); }
+        @JavascriptInterface public void stopTimer() { startForegroundService(new Intent(MainActivity.this,TimerService.class).setAction(TimerService.STOP).putExtra("confirmed",true)); }
         @JavascriptInterface public void acknowledgeFinished() { getSharedPreferences(TimerService.PREFS,MODE_PRIVATE).edit().putString("status","idle").apply(); }
-        @JavascriptInterface public void saveQueue(String json) { try { new JSONArray(json); getSharedPreferences(TimerService.PREFS,MODE_PRIVATE).edit().putString("queue",json).apply(); } catch(Exception ignored) {} }
+        @JavascriptInterface public void saveQueue(String json) {
+            try {
+                JSONArray incoming=new JSONArray(json),clean=new JSONArray();HashSet<String> seen=new HashSet<>();
+                for(int n=0;n<incoming.length();n++){JSONObject item=incoming.getJSONObject(n);String id=item.optString("uuid",item.optString("id",""));if(id.isEmpty()||seen.add(id))clean.put(item);}
+                SharedPreferences p=getSharedPreferences(TimerService.PREFS,MODE_PRIVATE);String status=p.getString("status","idle");
+                if(("running".equals(status)||"paused".equals(status))&&clean.length()>0&&!p.getString("uuid","").equals(clean.getJSONObject(0).optString("uuid")))return;
+                if("transition".equals(status)){JSONArray owned=new JSONArray(p.getString("queue","[]"));if(owned.length()>0&&(clean.length()==0||!owned.getJSONObject(0).optString("uuid").equals(clean.getJSONObject(0).optString("uuid"))))return;}
+                p.edit().putString("queue",clean.toString()).commit();
+            } catch(Exception ignored) {}
+        }
         @JavascriptInterface public void acknowledgeCompleted() { getSharedPreferences(TimerService.PREFS,MODE_PRIVATE).edit().putString("completed","[]").apply(); }
         @JavascriptInterface public void acknowledgeSynced() { getSharedPreferences(TimerService.PREFS,MODE_PRIVATE).edit().putString("synced_native","[]").apply(); }
         @JavascriptInterface public void savePending(String json) { try { JSONArray a=new JSONArray(json);SharedPreferences p=getSharedPreferences(TimerService.PREFS,MODE_PRIVATE);if(!json.equals(p.getString("pending","[]"))){p.edit().putString("pending",json).apply();if(a.length()>0)BackgroundSync.schedule(MainActivity.this);} } catch(Exception ignored) {} }
