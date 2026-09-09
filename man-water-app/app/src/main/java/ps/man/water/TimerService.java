@@ -115,8 +115,17 @@ public class TimerService extends Service {
             JSONArray queue=new JSONArray(prefs().getString("queue","[]"));String uuid=prefs().getString("uuid","");
             for(int i=0;i<queue.length();i++)if(uuid.equals(queue.getJSONObject(i).optString("uuid"))){queue.remove(i);break;}
             SharedPreferences.Editor edit=prefs().edit().putString("queue",queue.toString()).putLong("finishedAt",finishedAt).putBoolean("natural",natural);
-            if(queue.length()>0){long transitionEnd=finishedAt+10000L;edit.putString("status","transition").putLong("transitionEndAt",transitionEnd).apply();startLoop();}
-            else {edit.putString("status","idle").putLong("transitionEndAt",0).apply();broadcast();goIdle();}
+            if(queue.length()>0){
+                long transitionEnd=System.currentTimeMillis()+10000L;
+                edit.putString("status","transition").putLong("transitionEndAt",transitionEnd).commit();
+                broadcast();
+                startLoop();
+            }
+            else {
+                edit.putString("status","idle").putLong("transitionEndAt",0).commit();
+                broadcast();
+                goIdle();
+            }
         } catch(Exception e){goIdle();}
     }
 
