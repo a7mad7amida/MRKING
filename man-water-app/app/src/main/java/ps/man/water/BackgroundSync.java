@@ -36,7 +36,7 @@ public class BackgroundSync extends Worker {
             for(int i=0;i<items.length();i++)ids.add(items.getJSONObject(i).optString("uuid"));
             for(int i=0;i<completed.length();i++){
                 JSONObject c=completed.getJSONObject(i);String uuid=c.optString("uuid");if(uuid.isEmpty()||ids.contains(uuid))continue;
-                int duration=c.optInt("duration",0),remaining=c.optInt("remaining",0),seconds=Math.max(1,duration-remaining);
+                int duration=c.optInt("duration",0),remaining=c.optBoolean("natural",false)?0:c.optInt("remaining",0),seconds=Math.max(1,duration-remaining);
                 items.put(new JSONObject().put("uuid",uuid).put("name",c.optString("name")).put("subscriber_name",c.optString("name"))
                     .put("pump",c.optString("pump")).put("pump_id",accountJson.optInt("pump_id",0))
                     .put("start_at",iso(c.optLong("startedAt",c.optLong("finishedAt")-seconds*1000L)))
