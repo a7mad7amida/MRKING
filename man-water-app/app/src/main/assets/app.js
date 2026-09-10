@@ -1,6 +1,6 @@
 const STORE='man_water_v2';
 const defaults={queue:[],history:[],pending:[],account:null,settings:{sound:true,notifications:true,priority:'high',ringtone:'',alerts:[{before:90,duration:5,label:'تبقى دقيقة ونصف',enabled:true},{before:60,duration:5,label:'تبقت دقيقة واحدة',enabled:true},{before:0,duration:5,label:'انتهى الوقت',enabled:true}]},lastStatus:'idle',transitionAt:0};
-let state=loadState(),nativeState={status:'idle',remaining:0,duration:0},syncing=false,wasFinished=false,lastHistoryPull=0,pullingHistory=false,lastConnection=null,syncWatchdog=0,historyWatchdog=0;
+let state=loadState(),nativeState={status:'idle',remaining:0,duration:0},syncing=false,wasFinished=false,lastHistoryPull=0,pullingHistory=false,lastConnection=null,syncWatchdog=0,historyWatchdog=0,finishArmedUntil=0,finishResetTimer=0;
 const $=id=>document.getElementById(id),esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function loadState(){try{return Object.assign({},defaults,JSON.parse(localStorage.getItem(STORE)||'{}'))}catch(e){return structuredClone(defaults)}}
 function persist(){localStorage.setItem(STORE,JSON.stringify(state));android('saveQueue',JSON.stringify(state.queue));android('savePending',JSON.stringify(state.pending));if(state.account)android('lockAccount',JSON.stringify(state.account))}
@@ -41,7 +41,21 @@ function deleteQueue(id){let i=state.queue.findIndex(x=>x.id===id);if(i===0&&['r
 
 function startCurrent(){let item=current();if(!item||['running','paused','transition'].includes(nativeState.status))return;let now=Date.now();item.start_at=new Date(now).toISOString();item.startedAt=now;nativeState={status:'running',name:item.name,pump:item.pump,uuid:item.uuid,startedAt:now,endAt:now+item.seconds*1000,duration:item.seconds,remaining:item.seconds};state.lastStatus='running';persist();android('startTimer',item.name,item.seconds,item.pump,item.uuid);queueServerStart(item);renderQueue()}
 function togglePause(){if(nativeState.status==='paused'){android('resumeTimer');queueEvent('resume')}else{android('pauseTimer');queueEvent('pause')}}
-function finishTimer(){if(!current()||!['running','paused'].includes(nativeState.status))return;let left=liveRemaining(nativeState.status,+nativeState.duration||+current().seconds||0),early=left>0;if(early&&!confirm('متبقي '+fmt(left)+' من الوقت. هل تريد إنهاء العداد مبكرًا وحفظ الوقت الفعلي فقط؟'))return;let button=document.querySelector('.timerActions .finish');if(button){button.disabled=true;button.textContent='جاري الإنهاء...'}android('stopTimer');setTimeout(()=>{if(button){button.disabled=false;button.textContent='■ إنهاء'}},1800)}
+function finishTimer(){
+ if(!current()||!['running','paused'].includes(nativeState.status))return;
+ let button=document.querySelector('.timerActions .finish'),now=Date.now(),left=liveRemaining(nativeState.status,+nativeState.duration||+current().seconds||0);
+ if(now>finishArmedUntil){
+  finishArmedUntil=now+5000;
+  if(button){button.textContent='اضغط مرة ثانية للتأكيد • '+fmt(left);button.classList.add('armed')}
+  clearTimeout(finishResetTimer);finishResetTimer=setTimeout(()=>{finishArmedUntil=0;if(button){button.textContent='■ إنهاء';button.classList.remove('armed')}},5000);
+  return;
+ }
+ finishArmedUntil=0;clearTimeout(finishResetTimer);
+ if(button){button.disabled=true;button.classList.remove('armed');button.textContent='جاري الإنهاء والحفظ...'}
+ android('stopTimer');
+ setTimeout(()=>{try{NativeApp.onTimer(JSON.parse(android('state')||'{}'))}catch(e){}},350);
+ setTimeout(()=>{if(button&&['running','paused'].includes(nativeState.status)){button.disabled=false;button.textContent='تعذر الإنهاء — حاول مرة أخرى'}},2500)
+}
 function completeCurrent(ns){let item=current();if(!item)return;let end=ns.finishedAt||Date.now(),seconds=Math.max(1,Math.round((+ns.duration||item.seconds)-(+ns.remaining||0)));let record={uuid:item.uuid,name:item.name,subscriber_name:item.name,pump:item.pump,pump_id:+state.account?.pump_id||0,start_at:item.start_at||new Date(end-seconds*1000).toISOString(),end_at:new Date(end).toISOString(),seconds,planned_seconds:item.seconds,paused_seconds:+ns.pausedTotal||0,synced:false};state.history.unshift(record);state.pending.push(record);state.queue.shift();state.transitionAt=state.queue.length?Date.now()+10000:0;if(!state.transitionAt){state.lastStatus='idle';nativeState={status:'idle',remaining:0,duration:0}}android('acknowledgeFinished');persist();renderQueue();renderHistory();renderSettings();renderTimer()}
 function finishTransition(){state.transitionAt=0;state.lastStatus='idle';nativeState={status:'idle',remaining:0,duration:0};persist();renderQueue();renderTimer()}
 function queueServerStart(item){/* يبدأ الخادم عند مزامنة السجل النهائي؛ يحتفظ التطبيق بالتوقيت محليًا */}
