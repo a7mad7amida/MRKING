@@ -133,7 +133,7 @@ public class TimerService extends Service {
         try{
             JSONArray completed=new JSONArray(prefs().getString("completed","[]"));String uuid=prefs().getString("uuid","");
             for(int i=0;i<completed.length();i++)if(uuid.equals(completed.getJSONObject(i).optString("uuid")))return;
-            int duration=prefs().getInt("duration",0),left=remaining();
+            int duration=prefs().getInt("duration",0),left=natural?0:remaining();
             completed.put(new JSONObject().put("uuid",uuid).put("name",prefs().getString("name","المشترك"))
                 .put("pump",prefs().getString("pump","الغاطس")).put("startedAt",prefs().getLong("startedAt",finishedAt-duration*1000L))
                 .put("finishedAt",finishedAt).put("duration",duration).put("remaining",left)
